@@ -1,0 +1,233 @@
+import pandas as pd
+import os
+import glob
+import copy
+import re
+import fileinput
+from pip._vendor import contextlib2
+import itertools
+
+# data = pd.read_csv("data.csv")
+# data_without_uncertainty = pd.read_csv("data.csv",  usecols=["trial", "eventtype", "code", "time", "duration" ])
+
+
+my_path = os.path.abspath(os.path.dirname(__file__))
+path = os.path.join(my_path, "logs/")
+print(path)
+
+
+log_files_fast_map = sorted(glob.glob(path + '*FastMap*'))
+for n in range(len(log_files_fast_map)):
+    with open(log_files_fast_map[n], 'r') as file:
+        filedata = file.read()
+
+    with open(log_files_fast_map[n], 'w') as file:
+        file.write(filedata)
+    f = open(log_files_fast_map[n])
+    df = pd.read_csv(f, skiprows=2, sep='\s+',
+                     usecols=["Trial", "Time", "EventType", "Code", "Duration"])
+    df.rename(columns={'Time': 'start_time'}, inplace=True)
+
+    df = df[["Trial", 'start_time', 'EventType', 'Code', 'Duration']]
+    fingers = [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [5, 0]]
+    fingers_time_series = []
+    fingers_time_events = []
+    duration_time_events = []
+    rest_time_events = []
+    for x in range(len(df)):
+        finger = df.at[x, 'Code']
+        event_type = df.at[x, 'EventType']
+        trial = df.at[x, 'Trial']
+        if(event_type.startswith("Pulse") and trial == 1):
+            first_pulse_time = df.at[x, 'start_time']
+            # print(first_pulse_time)
+        if(finger.startswith("Baseline")):
+            baseline_time_stamp = int(df.at[x, 'start_time'])
+            some_start_time = baseline_time_stamp - first_pulse_time
+        if(finger.startswith("Rest")):
+            rest_time = int(df.at[x, 'start_time'])
+            previous_finger = int(df.at[x-1, 'start_time'])
+            rest_duration = rest_time - previous_finger
+            # print(x)
+            # print("Rest time, pause between previous finger :", rest_duration)
+            rest_time_events.append(rest_duration)
+        else:
+            rest_time_events.append(0)
+        if(finger.startswith("D")):
+            # print(finger)
+            finger_number = int(finger[1])
+            fingers[finger_number][1] = fingers[finger_number][1] + 1
+            finger_start_time = int(df.at[x, "start_time"])
+            difference = finger_start_time - baseline_time_stamp
+            event_start_time = finger_start_time - first_pulse_time
+            duration_time_event = event_start_time - some_start_time
+            fingers_time_series.append(finger_number)
+            fingers_time_events.append(event_start_time)
+            duration_time_events.append(duration_time_event)
+            # print("Code: D% s start time:" % finger_number, event_start_time)
+            # print("Duration: ", duration_time_event)
+    # print(len(rest_time_events))
+    # print('fingers', str(len(duration_time_events)))
+   
+    df_event_log = pd.DataFrame({'fingers': fingers_time_series, 'time': fingers_time_events, 'duration': duration_time_events})
+    df_event_log = df_event_log[['time', 'fingers', 'duration']]
+    df_event_log = df_event_log.assign(magnitude=1)
+    print(log_files_fast_map[n])
+    df_event_log = df_event_log.sort_values(["fingers", 'time'], ascending=True)
+    print(df_event_log)
+
+    encountered_fingers = []
+    filenames_to_write = []
+    for y in range(len(df_event_log)):
+        current_finger = df_event_log.at[y, "fingers"]
+        if (current_finger in encountered_fingers):
+            pp = 0
+            # print(y, "iteration and finger encountered: ", current_finger)
+            # print(current_finger, " already occured")
+        else:  # first time finger encountered
+            encountered_fingers.append(current_finger)
+            filenames_to_write.append(
+                "fastmap_D" + str(current_finger) + ".txt")
+        # print(filenames_to_write[0][11])
+        for x in range(len(filenames_to_write)):
+          # open_file_name = 'open_file_' + str(x)
+          # open_files.append(open_file_name)
+            open_file = open(filenames_to_write[x], 'a+')
+           # print(open_files[x])
+           # all x files are open at the same time and are being written to
+           # we need to close the fileStream that isn't needed
+            if (os.path.getsize(filenames_to_write[x]) > 0):
+                pp = 0
+            else:
+                open_file.write("Start time, Duration, Magnitute" + '\n')
+
+
+log_files_slow_block = sorted(glob.glob(path + '*SlowBlock*'))
+for n in range(len(log_files_slow_block)):
+    with open(log_files_slow_block[n], 'r') as file:
+        filedata = file.read()
+        filedata = filedata.replace('Event ', 'Event')
+        filedata = filedata.replace('R ', 'R')
+        filedata = filedata.replace('D2 ', 'D2')
+        filedata = filedata.replace('D3 ', 'D3')
+        filedata = filedata.replace('D4 ', 'D4')
+        # haven't encountered these
+        filedata = filedata.replace('D1 ', 'D1')
+        filedata = filedata.replace('D5 ', 'D5')
+
+    with open(log_files_slow_block[n], 'w') as file:
+        file.write(filedata)
+    f = open(log_files_slow_block[n])
+    df = pd.read_csv(f, skiprows=2, sep='\s+',
+                     usecols=["Trial", "Time", "EventType", "Code", "Duration"])
+    df.rename(columns={'Time': 'start_time'}, inplace=True)
+
+    df = df[["Trial", 'start_time', 'EventType', 'Code', 'Duration']]
+    fingers = [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]]
+    fingers_time_series = []
+    fingers_time_events = []
+    duration_time_events = []
+    for x in range(len(df)):
+        finger = df.at[x, 'Code']
+        event_type = df.at[x, 'EventType']
+        trial = df.at[x, 'Trial']
+        if(event_type.startswith("Pulse") and trial == 1):
+            first_pulse_time = df.at[x, 'start_time']
+            # print(first_pulse_time)
+        if(finger.startswith("Baseline")):
+            baseline_time_stamp = int(df.at[x, 'start_time'])
+            some_start_time = baseline_time_stamp - first_pulse_time
+            # print("Start time: ", some_start_time)
+        if(finger.startswith("RD")):
+            finger_number = int(finger[2])
+            fingers[finger_number][1] = fingers[finger_number][1] + 1
+            finger_start_time = int(df.at[x, "start_time"])
+            difference = finger_start_time - baseline_time_stamp
+            event_start_time = finger_start_time - first_pulse_time
+            duration_time_event = event_start_time - some_start_time
+            fingers_time_series.append(finger_number)
+            fingers_time_events.append(event_start_time)
+            duration_time_events.append(duration_time_event)
+
+    df_event_log = pd.DataFrame({'fingers': fingers_time_series, 'time': fingers_time_events, 'duration': duration_time_events})
+    df_event_log = df_event_log[['time', 'fingers', 'duration']]
+    df_event_log = df_event_log.assign(magnitude=1)
+    print(log_files_fast_map[n])
+    df_event_log = df_event_log.sort_values(["fingers", 'time'], ascending=True)
+    print(df_event_log)
+
+    encountered_fingers = []
+    filenames_to_write = []
+    for y in range(len(df_event_log)):
+        current_finger = df_event_log.at[y, "fingers"]
+        if(current_finger in encountered_fingers):
+            pp = 0
+            # print(current_finger, " already occured")
+        else:  # first time finger encountered
+            encountered_fingers.append(current_finger)
+            filenames_to_write.append(
+                "slowblock_D" + str(current_finger) + ".txt")
+    # print(filenames_to_write[0][11])
+        open_files = []
+        for x in range(len(filenames_to_write)):
+            open_file_name = 'open_file_'+str(x)
+            open_files.append(open_file_name)
+            open_files[x] = open(filenames_to_write[x], 'a+')
+            # print(open_files[x])
+            # all x files are open at the same time and are being written to
+            # we need to close the fileStream that isn't needed
+            if(os.path.getsize(filenames_to_write[x]) > 0):
+                # print("file not empty")
+                open_files[x].write("Some new shit" + '\n')
+            else:
+                open_files[x].write("Start time, Duration, Magnitute" + '\n')
+
+            open_files[x].close()
+
+    # print(y)
+
+
+# print (df.columns[3])
+# df['Code'] = df['Code'].astype(str)
+# print(df)
+# print(df['start_time'])
+
+
+# print(data_without_uncertainty.head(8))
+
+# we need to create a new column with the time divided by 10
+# print(len(data_without_uncertainty.columns))
+
+# our 4th column contains the time which is at index 3. we can select all of it using iloc
+# data_without_uncertainty.iloc[:,3]
+# print()
+
+# time_col= data_without_uncertainty.iloc[:,3];
+# time_col_divided_by_10 = time_col/10
+# print(time_col_divided_by_10)
+
+# data_without_uncertainty.insert(loc=4,column="time_div_10",value=time_col_divided_by_10)
+# initial_data_point_to_subtract_from = time_col_divided_by_10.iloc[0]
+# print(initial_data_point_to_subtract_from)
+# print(data_without_uncertainty)
+
+# starting_time = time_col_divided_by_10 - initial_data_point_to_subtract_from;
+# data_without_uncertainty.insert(loc=5,column="starting_time",value=starting_time)
+# data_without_uncertainty.insert(loc=6,column="duration_exp", value=0)
+# print(starting_time)
+# print(data_without_uncertainty)
+
+# we need a column "duration" after column "starting_time" where duration[0] = starting_time[1] - starting_time[0]
+# print(len(starting_time))
+# print(starting_time)
+
+
+# dur = data_without_uncertainty["duration_exp"]
+# count = 0
+# for x in range(len(starting_time)):
+#   if(x<152):
+#  dur[x] = starting_time[x+1] - starting_time[x]
+# print(data_without_uncertainty)
+
+# print('col name ', col)
+# print('col contents :' , columnSeriesObj.values)
