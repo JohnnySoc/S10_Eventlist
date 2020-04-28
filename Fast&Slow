@@ -178,7 +178,7 @@ for n in range(len(log_files_slow_block)):
             # we need to close the fileStream that isn't needed
             if(os.path.getsize(filenames_to_write[x]) > 0):
                 # print("file not empty")
-                open_files[x].write("Some new shit" + '\n')
+                open_files[x].write("numbers" + '\n')
             else:
                 open_files[x].write("Start time, Duration, Magnitute" + '\n')
 
