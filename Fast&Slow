@@ -1,233 +1,196 @@
 import pandas as pd
-import os
-import glob
-import copy
-import re
-import fileinput
-from pip._vendor import contextlib2
-import itertools
 
-# data = pd.read_csv("data.csv")
-# data_without_uncertainty = pd.read_csv("data.csv",  usecols=["trial", "eventtype", "code", "time", "duration" ])
+# Read in csv to dataframe
+fast = pd.read_csv('fast.csv', index_col=0)
 
+# Calculate start time and duration columns in seconds
+fast['start_time'] = (fast.time - fast.iloc[0].time) / 10000
+fast['duration'] = (fast.time.diff()) / 10000
 
-my_path = os.path.abspath(os.path.dirname(__file__))
-path = os.path.join(my_path, "logs/")
-print(path)
+# Drop the first row, Pulse with labels=1
+fast = fast[['start_time', 'code', 'duration']].drop(labels=1)
 
+# Set index to start at 1
+new_index = np.arange(1, len(fast)+1)
+fast.index = new_index
+fast
 
-log_files_fast_map = sorted(glob.glob(path + '*FastMap*'))
-for n in range(len(log_files_fast_map)):
-    with open(log_files_fast_map[n], 'r') as file:
-        filedata = file.read()
-
-    with open(log_files_fast_map[n], 'w') as file:
-        file.write(filedata)
-    f = open(log_files_fast_map[n])
-    df = pd.read_csv(f, skiprows=2, sep='\s+',
-                     usecols=["Trial", "Time", "EventType", "Code", "Duration"])
-    df.rename(columns={'Time': 'start_time'}, inplace=True)
-
-    df = df[["Trial", 'start_time', 'EventType', 'Code', 'Duration']]
-    fingers = [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [5, 0]]
-    fingers_time_series = []
-    fingers_time_events = []
-    duration_time_events = []
-    rest_time_events = []
-    for x in range(len(df)):
-        finger = df.at[x, 'Code']
-        event_type = df.at[x, 'EventType']
-        trial = df.at[x, 'Trial']
-        if(event_type.startswith("Pulse") and trial == 1):
-            first_pulse_time = df.at[x, 'start_time']
-            # print(first_pulse_time)
-        if(finger.startswith("Baseline")):
-            baseline_time_stamp = int(df.at[x, 'start_time'])
-            some_start_time = baseline_time_stamp - first_pulse_time
-        if(finger.startswith("Rest")):
-            rest_time = int(df.at[x, 'start_time'])
-            previous_finger = int(df.at[x-1, 'start_time'])
-            rest_duration = rest_time - previous_finger
-            # print(x)
-            # print("Rest time, pause between previous finger :", rest_duration)
-            rest_time_events.append(rest_duration)
-        else:
-            rest_time_events.append(0)
-        if(finger.startswith("D")):
-            # print(finger)
-            finger_number = int(finger[1])
-            fingers[finger_number][1] = fingers[finger_number][1] + 1
-            finger_start_time = int(df.at[x, "start_time"])
-            difference = finger_start_time - baseline_time_stamp
-            event_start_time = finger_start_time - first_pulse_time
-            duration_time_event = event_start_time - some_start_time
-            fingers_time_series.append(finger_number)
-            fingers_time_events.append(event_start_time)
-            duration_time_events.append(duration_time_event)
-            # print("Code: D% s start time:" % finger_number, event_start_time)
-            # print("Duration: ", duration_time_event)
-    # print(len(rest_time_events))
-    # print('fingers', str(len(duration_time_events)))
-   
-    df_event_log = pd.DataFrame({'fingers': fingers_time_series, 'time': fingers_time_events, 'duration': duration_time_events})
-    df_event_log = df_event_log[['time', 'fingers', 'duration']]
-    df_event_log = df_event_log.assign(magnitude=1)
-    print(log_files_fast_map[n])
-    df_event_log = df_event_log.sort_values(["fingers", 'time'], ascending=True)
-    print(df_event_log)
-
-    encountered_fingers = []
-    filenames_to_write = []
-    for y in range(len(df_event_log)):
-        current_finger = df_event_log.at[y, "fingers"]
-        if (current_finger in encountered_fingers):
-            pp = 0
-            # print(y, "iteration and finger encountered: ", current_finger)
-            # print(current_finger, " already occured")
-        else:  # first time finger encountered
-            encountered_fingers.append(current_finger)
-            filenames_to_write.append(
-                "fastmap_D" + str(current_finger) + ".txt")
-        # print(filenames_to_write[0][11])
-        for x in range(len(filenames_to_write)):
-          # open_file_name = 'open_file_' + str(x)
-          # open_files.append(open_file_name)
-            open_file = open(filenames_to_write[x], 'a+')
-           # print(open_files[x])
-           # all x files are open at the same time and are being written to
-           # we need to close the fileStream that isn't needed
-            if (os.path.getsize(filenames_to_write[x]) > 0):
-                pp = 0
-            else:
-                open_file.write("Start time, Duration, Magnitute" + '\n')
+fast.to_csv('fast_final.csv')
 
 
-log_files_slow_block = sorted(glob.glob(path + '*SlowBlock*'))
-for n in range(len(log_files_slow_block)):
-    with open(log_files_slow_block[n], 'r') as file:
-        filedata = file.read()
-        filedata = filedata.replace('Event ', 'Event')
-        filedata = filedata.replace('R ', 'R')
-        filedata = filedata.replace('D2 ', 'D2')
-        filedata = filedata.replace('D3 ', 'D3')
-        filedata = filedata.replace('D4 ', 'D4')
-        # haven't encountered these
-        filedata = filedata.replace('D1 ', 'D1')
-        filedata = filedata.replace('D5 ', 'D5')
 
-    with open(log_files_slow_block[n], 'w') as file:
-        file.write(filedata)
-    f = open(log_files_slow_block[n])
-    df = pd.read_csv(f, skiprows=2, sep='\s+',
-                     usecols=["Trial", "Time", "EventType", "Code", "Duration"])
-    df.rename(columns={'Time': 'start_time'}, inplace=True)
-
-    df = df[["Trial", 'start_time', 'EventType', 'Code', 'Duration']]
-    fingers = [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]]
-    fingers_time_series = []
-    fingers_time_events = []
-    duration_time_events = []
-    for x in range(len(df)):
-        finger = df.at[x, 'Code']
-        event_type = df.at[x, 'EventType']
-        trial = df.at[x, 'Trial']
-        if(event_type.startswith("Pulse") and trial == 1):
-            first_pulse_time = df.at[x, 'start_time']
-            # print(first_pulse_time)
-        if(finger.startswith("Baseline")):
-            baseline_time_stamp = int(df.at[x, 'start_time'])
-            some_start_time = baseline_time_stamp - first_pulse_time
-            # print("Start time: ", some_start_time)
-        if(finger.startswith("RD")):
-            finger_number = int(finger[2])
-            fingers[finger_number][1] = fingers[finger_number][1] + 1
-            finger_start_time = int(df.at[x, "start_time"])
-            difference = finger_start_time - baseline_time_stamp
-            event_start_time = finger_start_time - first_pulse_time
-            duration_time_event = event_start_time - some_start_time
-            fingers_time_series.append(finger_number)
-            fingers_time_events.append(event_start_time)
-            duration_time_events.append(duration_time_event)
-
-    df_event_log = pd.DataFrame({'fingers': fingers_time_series, 'time': fingers_time_events, 'duration': duration_time_events})
-    df_event_log = df_event_log[['time', 'fingers', 'duration']]
-    df_event_log = df_event_log.assign(magnitude=1)
-    print(log_files_fast_map[n])
-    df_event_log = df_event_log.sort_values(["fingers", 'time'], ascending=True)
-    print(df_event_log)
-
-    encountered_fingers = []
-    filenames_to_write = []
-    for y in range(len(df_event_log)):
-        current_finger = df_event_log.at[y, "fingers"]
-        if(current_finger in encountered_fingers):
-            pp = 0
-            # print(current_finger, " already occured")
-        else:  # first time finger encountered
-            encountered_fingers.append(current_finger)
-            filenames_to_write.append(
-                "slowblock_D" + str(current_finger) + ".txt")
-    # print(filenames_to_write[0][11])
-        open_files = []
-        for x in range(len(filenames_to_write)):
-            open_file_name = 'open_file_'+str(x)
-            open_files.append(open_file_name)
-            open_files[x] = open(filenames_to_write[x], 'a+')
-            # print(open_files[x])
-            # all x files are open at the same time and are being written to
-            # we need to close the fileStream that isn't needed
-            if(os.path.getsize(filenames_to_write[x]) > 0):
-                # print("file not empty")
-                open_files[x].write("numbers" + '\n')
-            else:
-                open_files[x].write("Start time, Duration, Magnitute" + '\n')
-
-            open_files[x].close()
-
-    # print(y)
+slow = pd.read_csv('slow.log', skiprows=2, sep='\s+')
+slow = slow[["Trial", "Event", "Code", "Time", "Duration"]]
+slow = slow.drop(labels=0)
+slow
 
 
-# print (df.columns[3])
-# df['Code'] = df['Code'].astype(str)
-# print(df)
-# print(df['start_time'])
+slow.info()
 
 
-# print(data_without_uncertainty.head(8))
+sorted(np.unique(slow.Time))
 
-# we need to create a new column with the time divided by 10
-# print(len(data_without_uncertainty.columns))
-
-# our 4th column contains the time which is at index 3. we can select all of it using iloc
-# data_without_uncertainty.iloc[:,3]
-# print()
-
-# time_col= data_without_uncertainty.iloc[:,3];
-# time_col_divided_by_10 = time_col/10
-# print(time_col_divided_by_10)
-
-# data_without_uncertainty.insert(loc=4,column="time_div_10",value=time_col_divided_by_10)
-# initial_data_point_to_subtract_from = time_col_divided_by_10.iloc[0]
-# print(initial_data_point_to_subtract_from)
-# print(data_without_uncertainty)
-
-# starting_time = time_col_divided_by_10 - initial_data_point_to_subtract_from;
-# data_without_uncertainty.insert(loc=5,column="starting_time",value=starting_time)
-# data_without_uncertainty.insert(loc=6,column="duration_exp", value=0)
-# print(starting_time)
-# print(data_without_uncertainty)
-
-# we need a column "duration" after column "starting_time" where duration[0] = starting_time[1] - starting_time[0]
-# print(len(starting_time))
-# print(starting_time)
+tip_time = slow[tip]
 
 
-# dur = data_without_uncertainty["duration_exp"]
-# count = 0
-# for x in range(len(starting_time)):
-#   if(x<152):
-#  dur[x] = starting_time[x+1] - starting_time[x]
-# print(data_without_uncertainty)
 
-# print('col name ', col)
-# print('col contents :' , columnSeriesObj.values)
+slow_original.head(40)
+
+
+slow_original = pd.read_csv('slow.log', skiprows=2, sep='\s+')
+slow_subset = slow_original[['Code', 'Time', 'TTime']]
+slow_subset.head(30)
+
+
+
+slow_original.to_csv('slow_original.csv')
+
+
+tip = slow.Time == 'tip'
+slow[tip]
+
+
+
+slow.Time = pd.to_numeric(slow.Time)
+slow.info()
+
+
+
+
+slow_hopeful = pd.read_csv('slow_hopeful.csv', index_col=0)
+slow_hopeful.head(30)
+
+
+
+slow = pd.read_csv('slow.csv', index_col=0)
+# Change Code to Time
+slow = slow[['Trial', 'Event', 'Code', 'Type']]
+slow.columns = ['trial', 'event', 'time', 'code']
+slow
+
+
+
+
+pulse = slow.event == 'Pulse'
+slow = slow.drop(labels=slow[pulse].index[1:])
+# slow = slow[['start_time', 'code', 'duration']]
+
+
+
+
+slow = slow.drop(labels=[0])
+slow
+
+
+
+# Subtract the first Pulse which is 293973 
+
+slow['start_time'] = (slow.time - 293973) / 10000
+slow['duration'] = (slow.time.diff()) / 10000
+slow
+
+
+
+
+new_index = np.arange(1, len(slow)+1)
+slow.index = new_index
+slow = slow.drop(labels=[1, 2])
+slow
+
+
+
+
+new_index = np.arange(1, len(slow)+1)
+slow.index = new_index
+
+
+
+slow = slow[['start_time', 'code', 'duration']]
+slow
+
+
+d2_slow = slow.code == 'D2'
+d3_slow = slow.code == 'D3'
+d4_slow = slow.code == 'D4'
+
+
+slow_d2 = slow[d2_slow]
+slow_d2['magnitude'] = 1
+slow_d2.columns = col_names
+slow_d2 = slow_d2[col_order]
+slow_d2.to_csv('slow_d2.txt')
+
+
+slow_d3 = slow[d3_slow]
+slow_d3['magnitude'] = 1
+slow_d3.columns = col_names
+slow_d3 = slow_d3[col_order]
+slow_d3.to_csv('slow_d3.txt')
+
+
+
+slow_d4 = slow[d4_slow]
+slow_d4['magnitude'] = 1
+slow_d4.columns = col_names
+slow_d4 = slow_d4[col_order]
+slow_d4.to_csv('slow_d4.txt')
+
+
+col_names = ['Start time', 'Code', 'Duration', 'Magnitude']
+col_order = ['Start time', 'Duration', 'Magnitude', 'Code']
+
+
+slow.to_csv('slow_final.txt')
+
+
+get_ipython().system('ls')
+
+
+fast_far_away = pd.read_csv('example/data/fast.csv')
+fast_far_away
+
+
+# Subtract the first Pulse which is 293973 (found via inspection)
+slow['start_time'] = (slow.time - 293973) / 10000
+slow['duration'] = (slow.time.diff()) / 10000
+slow
+
+
+fast = pd.read_csv('fast_final.csv', index_col=0)
+np.unique(fast.code)
+
+
+fast_d1_mask = fast.code.str.startswith('D1')
+fast_d2_mask = fast.code.str.startswith('D2')
+fast_d3_mask = fast.code.str.startswith('D3')
+fast_d4_mask = fast.code.str.startswith('D4')
+fast_d5_mask = fast.code.str.startswith('D5')
+
+all_masks = [fast_d1_mask, fast_d2_mask, fast_d3_mask, fsat]
+
+
+col_names_fast = ['Start time', 'Code', 'Duration', 'Magnitude']
+col_order_fast = ['Start time', 'Duration', 'Magnitude']
+
+def make_fast_d_txt_file(mask, di):
+    fast_masked = fast[mask]
+    fast_masked['magnitude'] = 1
+    
+    fast_masked.columns = col_names_fast
+    fast_masked = fast_masked[col_order_fast]
+    
+    fast_masked.to_csv(f'fast_{di}.txt')
+
+
+make_fast_d_txt_file(fast_d1_mask, 'd1')
+make_fast_d_txt_file(fast_d2_mask, 'd2')
+make_fast_d_txt_file(fast_d3_mask, 'd3')
+make_fast_d_txt_file(fast_d4_mask, 'd4')
+make_fast_d_txt_file(fast_d5_mask, 'd5')
+
+
+
+
+
+
+
