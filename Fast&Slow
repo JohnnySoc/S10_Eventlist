@@ -17,50 +17,33 @@ fast
 
 fast.to_csv('fast_final.csv')
 
-
-
 slow = pd.read_csv('slow.log', skiprows=2, sep='\s+')
 slow = slow[["Trial", "Event", "Code", "Time", "Duration"]]
 slow = slow.drop(labels=0)
 slow
 
-
 slow.info()
-
 
 sorted(np.unique(slow.Time))
 
 tip_time = slow[tip]
 
-
-
 slow_original.head(40)
-
 
 slow_original = pd.read_csv('slow.log', skiprows=2, sep='\s+')
 slow_subset = slow_original[['Code', 'Time', 'TTime']]
 slow_subset.head(30)
 
-
-
 slow_original.to_csv('slow_original.csv')
-
 
 tip = slow.Time == 'tip'
 slow[tip]
 
-
-
 slow.Time = pd.to_numeric(slow.Time)
 slow.info()
 
-
-
-
 slow_hopeful = pd.read_csv('slow_hopeful.csv', index_col=0)
 slow_hopeful.head(30)
-
-
 
 slow = pd.read_csv('slow.csv', index_col=0)
 # Change Code to Time
@@ -68,20 +51,13 @@ slow = slow[['Trial', 'Event', 'Code', 'Type']]
 slow.columns = ['trial', 'event', 'time', 'code']
 slow
 
-
-
-
 pulse = slow.event == 'Pulse'
 slow = slow.drop(labels=slow[pulse].index[1:])
 # slow = slow[['start_time', 'code', 'duration']]
 
 
-
-
 slow = slow.drop(labels=[0])
 slow
-
-
 
 # Subtract the first Pulse which is 293973 
 
@@ -89,21 +65,13 @@ slow['start_time'] = (slow.time - 293973) / 10000
 slow['duration'] = (slow.time.diff()) / 10000
 slow
 
-
-
-
 new_index = np.arange(1, len(slow)+1)
 slow.index = new_index
 slow = slow.drop(labels=[1, 2])
 slow
 
-
-
-
 new_index = np.arange(1, len(slow)+1)
 slow.index = new_index
-
-
 
 slow = slow[['start_time', 'code', 'duration']]
 slow
@@ -126,7 +94,6 @@ slow_d3['magnitude'] = 1
 slow_d3.columns = col_names
 slow_d3 = slow_d3[col_order]
 slow_d3.to_csv('slow_d3.txt')
-
 
 
 slow_d4 = slow[d4_slow]
